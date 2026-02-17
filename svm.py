@@ -107,132 +107,167 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
-# --- Page Config ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="NanoFlow | Density Predictor",
+    page_title="NanoFlow AI | Density Analytics",
     page_icon="🧪",
     layout="wide"
 )
 
-# --- Custom CSS for Styling ---
+# --- PROFESSIONAL STYLING ---
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
+    .main { background-color: #f9fbfd; }
+    .stMetric { 
+        background-color: #ffffff; 
+        padding: 20px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #ececf1;
     }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+    h1 { color: #1e3a8a; }
     </style>
     """, unsafe_allow_html=True)
 
+# --- MODEL TRAINING ENGINE ---
 @st.cache_resource
 def train_model(df):
+    """Trains a Random Forest Regressor within a Preprocessing Pipeline."""
+    # Define features and target based on your CSV structure
     X = df.drop(columns=['Density (ρ)'])
     y = df['Density (ρ)']
+    
+    # Categorical features for encoding
     cat_cols = ['Nano Particle', 'Base Fluid']
+    
+    # Preprocessing: Convert text to numbers, keep others as is
     preprocessor = ColumnTransformer(
-        transformers=[('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)], 
-        remainder='passthrough'
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+        ], remainder='passthrough'
     )
-    model = Pipeline(steps=[
+    
+    # Create and fit the pipeline
+    pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
     ])
-    model.fit(X, y)
-    return model
+    
+    pipeline.fit(X, y)
+    return pipeline
 
-# --- Header Section ---
-col_logo, col_text = st.columns([1, 4])
-with col_text:
-    st.title("Nanofluid Density Predictive Analytics")
-    st.markdown("""
-    This interface utilizes a **Random Forest Machine Learning** model to predict the effective density 
-    of hybrid nanofluids based on experimental parameters.
+# --- HEADER SECTION ---
+st.title("🧪 Nanofluid Density Predictive Analytics")
+st.markdown("""
+    This platform utilizes **Ensemble Machine Learning** to predict the density of hybrid nanofluids. 
+    Adjust the parameters in the sidebar to observe real-time thermophysical changes.
     """)
+st.divider()
 
-# --- Theoretical Background ---
-with st.expander("📚 View Theoretical Formula"):
-    st.write("The density of a hybrid nanofluid is typically calculated using the mixture rule:")
-    st.latex(r"\rho_{hnf} = (1 - \phi)\rho_{bf} + \phi_1\rho_{np1} + \phi_2\rho_{np2}")
-    st.info("**Note:** The ML model accounts for non-linear temperature effects that this simple formula may overlook.")
-
+# --- LOAD DATA & MODEL ---
 try:
     data = pd.read_csv('Density_Prediction_Dataset.csv')
     model = train_model(data)
 
-    # --- Sidebar Inputs ---
-    st.sidebar.header("⚙️ Configuration")
+    # --- SIDEBAR INPUTS ---
+    st.sidebar.header("🔬 Material Parameters")
     
-    nano_p = st.sidebar.selectbox("Hybrid Nano Particle", data['Nano Particle'].unique())
+    # Dropdowns for categories
+    nano_p = st.sidebar.selectbox("Hybrid Nano Particle Pair", data['Nano Particle'].unique())
     base_f = st.sidebar.selectbox("Base Fluid Media", data['Base Fluid'].unique())
     
-    st.sidebar.divider()
+    # Numerical sliders/inputs
+    temp = st.sidebar.slider("System Temperature (°C)", 
+                             float(data['Temperature (°C)'].min()), 
+                             float(data['Temperature (°C)'].max()), 25.0)
     
-    temp = st.sidebar.select_slider("System Temperature (°C)", 
-                                    options=sorted(data['Temperature (°C)'].unique()))
+    vol_conc = st.sidebar.number_input("Total Volume Concentration (ϕ)", 
+                                       min_value=0.0, max_value=1.0, 
+                                       value=0.05, step=0.001, format="%.4f")
     
-    vol_conc = st.sidebar.slider("Total Volume Concentration (ϕ)", 0.0, 0.2, 0.05, 0.001)
-    
-    with st.sidebar.expander("Advanced Material Properties"):
-        rho_np1 = st.number_input("ρ of Particle 1", value=float(data['Density of Nano Particle 1 (ρnp)'].mean()))
-        rho_np2 = st.number_input("ρ of Particle 2", value=float(data['Density of Nano Particle 2 (ρnp)'].mean()))
-        rho_bf = st.number_input("ρ of Base Fluid", value=float(data['Density of Base Fluid (ρbf)'].mean()))
-        mix1 = st.slider("Mixture Ratio: Particle 1 (%)", 0, 100, 50)
+    with st.sidebar.expander("🛠️ Advanced Component Specs"):
+        rho_np1 = st.number_input("ρ of Particle 1 (kg/m³)", value=float(data['Density of Nano Particle 1 (ρnp)'].mean()))
+        rho_np2 = st.number_input("ρ of Particle 2 (kg/m³)", value=float(data['Density of Nano Particle 2 (ρnp)'].mean()))
+        rho_bf = st.number_input("ρ of Base Fluid (kg/m³)", value=float(data['Density of Base Fluid (ρbf)'].mean()))
+        mix1 = st.slider("Mixture Percentage of P1 (%)", 0, 100, 50)
+        mix2 = 100 - mix1
 
-    # --- Data Preparation ---
-    input_dict = {
-        'Nano Particle': nano_p, 'Base Fluid': base_f, 'Temperature (°C)': temp,
-        'Volume Concentration (ϕ)': vol_conc, 'Density of Nano Particle 1 (ρnp)': rho_np1,
-        'Density of Nano Particle 2 (ρnp)': rho_np2, 'Density of Base Fluid (ρbf)': rho_bf,
-        'Volume Mixture of Particle 1': mix1, 'Volume Mixture of Particle 2': 100 - mix1
-    }
-    input_df = pd.DataFrame([input_dict])
+    # --- PREDICTION LOGIC ---
+    # Create input dataframe for the model
+    input_df = pd.DataFrame([{
+        'Nano Particle': nano_p,
+        'Base Fluid': base_f,
+        'Temperature (°C)': temp,
+        'Volume Concentration (ϕ)': vol_conc,
+        'Density of Nano Particle 1 (ρnp)': rho_np1,
+        'Density of Nano Particle 2 (ρnp)': rho_np2,
+        'Density of Base Fluid (ρbf)': rho_bf,
+        'Volume Mixture of Particle 1': mix1,
+        'Volume Mixture of Particle 2': mix2
+    }])
 
-    # --- Results Section ---
-    res_col1, res_col2 = st.columns([2, 1])
+    prediction = model.predict(input_df)[0]
 
-    with res_col1:
-        st.subheader("Analysis Results")
-        prediction = model.predict(input_df)[0]
-        
-        # Display Prediction with visual context
-        delta_rho = prediction - rho_bf
-        st.metric(label="Predicted Hybrid Nanofluid Density (ρ)", 
-                  value=f"{prediction:,.2f} kg/m³", 
-                  delta=f"{delta_rho:.2f} vs Base Fluid")
-        
-        st.success(f"The addition of {nano_p} increased the density by {((prediction/rho_bf)-1)*100:.2f}% relative to the base fluid.")
+    # --- MAIN DASHBOARD LAYOUT ---
+    col1, col2 = st.columns([1.2, 1])
 
-    with res_col2:
-        st.subheader("Material Composition")
-        # Visualizing the mixture
-        chart_data = pd.DataFrame({
-            'Component': ['Particle 1', 'Particle 2'],
-            'Ratio': [mix1, 100-mix1]
-        })
-        st.write(f"**Primary Particle:** {nano_p.split('/')[0]}")
-        st.bar_chart(chart_data.set_index('Component'))
+    with col1:
+        st.subheader("Theoretical Framework")
+        st.markdown("The density is predicted based on the non-linear mixture rule extension:")
+        st.latex(r"\rho_{hnf} = (1 - \phi)\rho_{bf} + \phi_1\rho_{np1} + \phi_2\rho_{np2}")
+        st.info("""**Model Insight:** The Random Forest algorithm evaluates 100 decision trees to 
+                account for temperature-dependent expansion and molecular interactions.""")
 
-    st.divider()
-    
-    # --- Experimental Data Preview ---
-    tab1, tab2 = st.tabs(["📊 Correlation Matrix", "📋 Experimental Records"])
+    with col2:
+        st.subheader("Prediction Result")
+        delta_val = prediction - rho_bf
+        st.metric(
+            label="Predicted Density (ρ)", 
+            value=f"{prediction:.3f} kg/m³", 
+            delta=f"{delta_val:.3f} relative to Base Fluid"
+        )
+        st.success(f"Validated for {nano_p} in {base_f}")
+
+    st.markdown("---")
+
+    # --- ANALYTICS TABS (CORRELATION MATRIX) ---
+    st.subheader("📊 Statistical Insights")
+    tab1, tab2, tab3 = st.tabs(["Correlation Matrix", "Regression Analysis", "Experimental Data"])
+
     with tab1:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Scanning_Electron_Micrograph_of_Nanoparticles.jpg/640px-Scanning_Electron_Micrograph_of_Nanoparticles.jpg", 
-                 caption="Reference SEM image of standard Nanoparticles (Illustration)")
+        st.write("### Feature Interaction Heatmap")
+        st.write("This matrix shows the Pearson Correlation between physical variables.")
+        # Calculate correlation on numeric columns only
+        numeric_data = data.select_dtypes(include=[np.number])
+        corr_matrix = numeric_data.corr()
+        
+        fig_corr, ax_corr = plt.subplots(figsize=(10, 7))
+        sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0, fmt=".2f", ax=ax_corr)
+        plt.title("Correlation Matrix of Nanofluid Properties")
+        st.pyplot(fig_corr)
+
     with tab2:
+        st.write("### Temperature Influence")
+        fig_reg, ax_reg = plt.subplots(figsize=(10, 5))
+        sns.lineplot(data=data, x='Temperature (°C)', y='Density (ρ)', hue='Nano Particle', marker='o', ax=ax_reg)
+        plt.grid(True, linestyle='--', alpha=0.6)
+        st.pyplot(fig_reg)
+
+    with tab3:
+        st.write("### Raw Experimental Records")
         st.dataframe(data, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Initialization Error: {e}")
-    st.info("Ensure 'Density_Prediction_Dataset.csv' is present in the root directory.")
-    
+    st.error(f"Initialization Failed: {e}")
+    st.warning("Please ensure 'Density_Prediction_Dataset.csv' is in the same folder as this script.")
+
+# --- FOOTER ---
+st.sidebar.markdown("---")
+st.sidebar.caption("Developed for Nanofluid Research | Machine Learning Model v1.0")
