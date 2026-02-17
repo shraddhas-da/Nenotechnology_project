@@ -462,134 +462,211 @@
 # st.sidebar.markdown("---")
 # st.sidebar.markdown("© 2024 Nanofluid ML Analytics v2.0")
 
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_absolute_error
-from fpdf import FPDF
-import io
 
-# --- Page Config ---
-st.set_page_config(page_title="NanoFlow AI | Analytics", page_icon="🧪", layout="wide")
+# --- PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="NanoFlow AI | Hybrid Nanofluid Analytics",
+    page_icon="🧪",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Styling ---
+# --- CUSTOM CSS FOR PROFESSIONAL LOOK ---
 st.markdown("""
     <style>
     .main { background-color: #f8faff; }
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        border: 1px solid #e1e8f0;
+    }
+    div[data-testid="stExpander"] {
+        border: none !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #1e3a8a;
+        color: white;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- PDF Generation Function ---
-def generate_pdf(r2, mae):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Nanofluid Density Prediction Report", ln=True, align='C')
-    
-    pdf.set_font("Arial", 'B', 12)
-    pdf.ln(10)
-    pdf.cell(200, 10, txt="1. Project Objective", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.multi_cell(0, 10, txt="To develop a machine learning model that accurately predicts hybrid nanofluid density, reducing experimental costs and time.")
-    
-    pdf.set_font("Arial", 'B', 12)
-    pdf.ln(5)
-    pdf.cell(200, 10, txt="2. Machine Learning Tools & Metrics", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.multi_cell(0, 10, txt=f"Tools: Python, Scikit-learn, Random Forest Regressor.\nMetrics:\n- R2 Score: {r2:.4f}\n- MAE: {mae:.4f} kg/m3")
-    
-    pdf.set_font("Arial", 'B', 12)
-    pdf.ln(5)
-    pdf.cell(200, 10, txt="3. Benefits", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.multi_cell(0, 10, txt="- Cost-effective material screening\n- High-speed thermal analysis\n- Improved accuracy over simple mixture rules.")
-    
-    return pdf.output(dest='S').encode('latin-1')
-
-# --- Model Training with Metrics ---
+# --- MODEL TRAINING ENGINE ---
 @st.cache_resource
-def train_and_evaluate(df):
+def train_model(df):
+    """Trains a Random Forest Regressor and calculates evaluation metrics."""
     X = df.drop(columns=['Density (ρ)'])
     y = df['Density (ρ)']
     
+    # Split data to evaluate performance
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     cat_cols = ['Nano Particle', 'Base Fluid']
+    
     preprocessor = ColumnTransformer(
-        transformers=[('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)],
-        remainder='passthrough'
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+        ], remainder='passthrough'
     )
     
-    model = Pipeline(steps=[
+    pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
+        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1))
     ])
     
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # Fit on training set
+    pipeline.fit(X_train, y_train)
     
+    # Evaluate on test set
+    y_pred = pipeline.predict(X_test)
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
     
-    return model, r2, mae
+    # Refit on full data for best production prediction (optional, but standard)
+    pipeline.fit(X, y)
+    
+    return pipeline, r2, mae
 
-# --- App Execution ---
+# --- HEADER SECTION ---
+st.title("🧪 Nanofluid Density Predictive Analytics")
+st.markdown("""
+    **Advanced Research Tool:** This interface predicts the effective density ($\rho_{hnf}$) of hybrid nanofluids 
+    using a Random Forest Ensemble model trained on experimental data.
+    """)
+st.divider()
+
+# --- LOAD DATA ---
 try:
     data = pd.read_csv('Density_Prediction_Dataset.csv')
-    model, r2, mae = train_and_evaluate(data)
+    # Unpack model and metrics
+    model, r2_val, mae_val = train_model(data)
 
-    st.title("🧪 Nanofluid Density Predictive Analytics")
+    # --- SIDEBAR: CONTROL PANEL ---
+    st.sidebar.header("🔬 Configuration Panel")
     
-    # Header Metrics
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Model Accuracy (R²)", f"{r2*100:.2f}%")
-    m2.metric("Mean Error (MAE)", f"{mae:.4f} kg/m³")
-    m3.download_button("📥 Download Project PDF", generate_pdf(r2, mae), "Project_Report.pdf", "application/pdf")
+    with st.sidebar:
+        st.subheader("Material Selection")
+        nano_p = st.selectbox("Hybrid Nano Particle Pair", sorted(data['Nano Particle'].unique()))
+        base_f = st.selectbox("Base Fluid Medium", sorted(data['Base Fluid'].unique()))
+        
+        st.divider()
+        st.subheader("Physical Parameters")
+        temp = st.slider("System Temperature (°C)", 
+                         float(data['Temperature (°C)'].min()), 
+                         float(data['Temperature (°C)'].max()), 25.0)
+        
+        vol_conc = st.number_input("Total Volume Concentration (ϕ)", 
+                                    min_value=0.0, max_value=0.5, 
+                                    value=0.05, step=0.001, format="%.4f")
+        
+        with st.expander("🛠️ Advanced Component Density"):
+            rho_np1 = st.number_input("Density P1 (kg/m³)", value=float(data['Density of Nano Particle 1 (ρnp)'].mean()))
+            rho_np2 = st.number_input("Density P2 (kg/m³)", value=float(data['Density of Nano Particle 2 (ρnp)'].mean()))
+            rho_bf = st.number_input("Density BF (kg/m³)", value=float(data['Density of Base Fluid (ρbf)'].mean()))
+            mix1 = st.slider("Mix Ratio Particle 1 (%)", 0, 100, 50)
+            mix2 = 100 - mix1
 
-    st.divider()
+    # --- PREDICTION ENGINE ---
+    input_features = pd.DataFrame([{
+        'Nano Particle': nano_p,
+        'Base Fluid': base_f,
+        'Temperature (°C)': temp,
+        'Volume Concentration (ϕ)': vol_conc,
+        'Density of Nano Particle 1 (ρnp)': rho_np1,
+        'Density of Nano Particle 2 (ρnp)': rho_np2,
+        'Density of Base Fluid (ρbf)': rho_bf,
+        'Volume Mixture of Particle 1': mix1,
+        'Volume Mixture of Particle 2': mix2
+    }])
 
-    # Layout
-    col1, col2 = st.columns([1, 1])
+    prediction = model.predict(input_features)[0]
+
+    # --- MAIN UI LAYOUT ---
+    st.subheader("Results & Model Performance")
     
-    with col1:
-        st.subheader("🎯 Project Objective")
-        st.write("Using Random Forest to model non-linear thermophysical interactions in hybrid fluids.")
+    # Layout for Results (Added metrics for R2 and MAE)
+    res_col1, res_col2, res_col3, res_col4 = st.columns([1.5, 1, 1, 1])
+
+    with res_col1:
+        st.write("**Theoretical Context**")
         st.latex(r"\rho_{hnf} = (1 - \phi)\rho_{bf} + \phi_1\rho_{np1} + \phi_2\rho_{np2}")
-        
-        st.subheader("⚙️ Predict New Density")
-        nano = st.selectbox("Select Nano Particle", data['Nano Particle'].unique())
-        bf = st.selectbox("Select Base Fluid", data['Base Fluid'].unique())
-        temp = st.slider("Temperature (°C)", 20.0, 80.0, 25.0)
-        phi = st.number_input("Volume Concentration (ϕ)", 0.0, 1.0, 0.05)
-        
-        # Simple input DF for prediction
-        input_data = pd.DataFrame([{
-            'Nano Particle': nano, 'Base Fluid': bf, 'Temperature (°C)': temp, 
-            'Volume Concentration (ϕ)': phi, 
-            'Density of Nano Particle 1 (ρnp)': data['Density of Nano Particle 1 (ρnp)'].mean(),
-            'Density of Nano Particle 2 (ρnp)': data['Density of Nano Particle 2 (ρnp)'].mean(),
-            'Density of Base Fluid (ρbf)': data['Density of Base Fluid (ρbf)'].mean(),
-            'Volume Mixture of Particle 1': 50, 'Volume Mixture of Particle 2': 50
-        }])
-        
-        if st.button("Predict Density"):
-            res = model.predict(input_data)[0]
-            st.success(f"Predicted Density: {res:.4f} kg/m³")
+        st.info(f"Relative change to base fluid: **{((prediction/rho_bf)-1)*100:.2f}%**")
 
-    with col2:
-        st.subheader("📊 Feature Correlation")
-        fig, ax = plt.subplots(figsize=(8, 6))
-        sns.heatmap(data.select_dtypes(include=[np.number]).corr(), annot=True, cmap='RdBu_r', ax=ax)
-        st.pyplot(fig)
+    with res_col2:
+        delta_val = prediction - rho_bf
+        st.metric(
+            label="Estimated Density (ρ)", 
+            value=f"{prediction:.2f} kg/m³", 
+            delta=f"{delta_val:.2f} kg/m³",
+            delta_color="normal"
+        )
+
+    with res_col3:
+        st.metric(
+            label="Model $R^2$ Score", 
+            value=f"{r2_val:.4f}",
+            help="Closer to 1.0000 is perfect prediction."
+        )
+
+    with res_col4:
+        st.metric(
+            label="Mean Absolute Error", 
+            value=f"{mae_val:.2f}",
+            help="Average units (kg/m³) the prediction deviates from reality."
+        )
+
+    st.markdown("---")
+
+    # --- ANALYTICS SECTION ---
+    st.subheader("📊 Data Science & Insights")
+    tab_corr, tab_trend, tab_data = st.tabs(["Correlation Heatmap", "Temperature Trends", "Dataset Explorer"])
+
+    with tab_corr:
+        st.write("### Pearson Correlation Matrix")
+        numeric_df = data.select_dtypes(include=[np.number])
+        corr = numeric_df.corr()
+        
+        fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+        sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5, ax=ax_corr)
+        plt.title("Property Correlation Heatmap", fontsize=14)
+        st.pyplot(fig_corr)
+
+    with tab_trend:
+        st.write("### Temperature vs. Density Analysis")
+        fig_trend, ax_trend = plt.subplots(figsize=(10, 5))
+        sns.lineplot(data=data, x='Temperature (°C)', y='Density (ρ)', hue='Nano Particle', marker='o', ax=ax_trend)
+        plt.grid(True, linestyle='--', alpha=0.5)
+        plt.title("Impact of Temperature on Density Across Particles")
+        st.pyplot(fig_trend)
+
+    with tab_data:
+        st.write("### Experimental Training Data")
+        st.dataframe(data, use_container_width=True)
+        st.download_button("📥 Export Experimental Data to CSV", 
+                            data.to_csv(index=False), 
+                            file_name="Nanofluid_Density_Data.csv", 
+                            mime="text/csv")
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"❌ Application Error: {e}")
+    st.info("Check if 'Density_Prediction_Dataset.csv' is in the same directory.")
+
+# --- FOOTER ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("© 2024 Nanofluid ML Analytics v2.0")
